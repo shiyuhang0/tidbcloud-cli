@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func BranchCmd(h *internal.Helper) *cobra.Command {
+func Cmd(h *internal.Helper) *cobra.Command {
 	var branchCmd = &cobra.Command{
 		Use:   "branch",
 		Short: "Manage branches in your serverless cluster",
@@ -30,6 +30,5 @@ func BranchCmd(h *internal.Helper) *cobra.Command {
 	branchCmd.AddCommand(DeleteCmd(h))
 	branchCmd.AddCommand(ListCmd(h))
 	branchCmd.AddCommand(DescribeCmd(h))
-	branchCmd.AddCommand(ConnectInfoCmd(h))
 	return branchCmd
 }

@@ -87,7 +87,6 @@ func ListCmd(h *internal.Helper) *cobra.Command {
 				}
 				pID = project.ID
 			} else {
-				// non-interactive mode does not need projectID
 				pID, err = cmd.Flags().GetString(flag.ProjectID)
 				if err != nil {
 					return errors.Trace(err)

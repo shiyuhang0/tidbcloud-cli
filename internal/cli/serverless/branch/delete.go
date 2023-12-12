@@ -21,7 +21,7 @@ import (
 	"tidbcloud-cli/internal/flag"
 	"tidbcloud-cli/internal/service/cloud"
 	"tidbcloud-cli/internal/util"
-	branchApi "tidbcloud-cli/pkg/tidbcloud/branch/client/branch_service"
+	branchApi "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/client/branch_service"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/AlecAivazis/survey/v2/terminal"
@@ -43,6 +43,27 @@ func (c DeleteOpts) NonInteractiveFlags() []string {
 	}
 }
 
+func (c *DeleteOpts) MarkInteractive(cmd *cobra.Command) error {
+	flags := c.NonInteractiveFlags()
+	for _, fn := range flags {
+		f := cmd.Flags().Lookup(fn)
+		if f != nil && f.Changed {
+			c.interactive = false
+			break
+		}
+	}
+	// Mark required flags
+	if !c.interactive {
+		for _, fn := range flags {
+			err := cmd.MarkFlagRequired(fn)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func DeleteCmd(h *internal.Helper) *cobra.Command {
 	opts := DeleteOpts{
 		interactive: true,
@@ -54,20 +75,16 @@ func DeleteCmd(h *internal.Helper) *cobra.Command {
 		Short: "Delete a branch in a specified serverless cluster",
 		Args:  cobra.NoArgs,
 		Example: fmt.Sprintf(`  Delete a branch in interactive mode:
-  $ %[1]s branch delete
+  $ %[1]s serverless branch delete
 
   Delete a branch in non-interactive mode:
-  $ %[1]s branch delete -c <cluster-id> -b <branch-id>`, config.CliName),
+  $ %[1]s serverless branch delete -c <cluster-id> -b <branch-id>`, config.CliName),
 		Aliases: []string{"rm"},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			flags := opts.NonInteractiveFlags()
-			for _, fn := range flags {
-				f := cmd.Flags().Lookup(fn)
-				if f != nil && f.Changed {
-					opts.interactive = false
-				}
+			err := opts.MarkInteractive(cmd)
+			if err != nil {
+				return errors.Trace(err)
 			}
-
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -140,7 +157,7 @@ func DeleteCmd(h *internal.Helper) *cobra.Command {
 				}
 			}
 
-			params := branchApi.NewDeleteBranchParams().
+			params := branchApi.NewBranchServiceDeleteBranchParams().
 				WithClusterID(clusterID).WithBranchID(branchID)
 			_, err = d.DeleteBranch(params)
 			if err != nil {
@@ -155,7 +172,6 @@ func DeleteCmd(h *internal.Helper) *cobra.Command {
 	deleteCmd.Flags().BoolVar(&force, flag.Force, false, "Delete a cluster without confirmation")
 	deleteCmd.Flags().StringP(flag.BranchID, flag.BranchIDShort, "", "The ID of the branch to be deleted")
 	deleteCmd.Flags().StringP(flag.ClusterID, flag.ClusterIDShort, "", "The cluster ID of the branch to be deleted")
-	deleteCmd.MarkFlagsRequiredTogether(flag.BranchID, flag.ClusterID)
 
 	return deleteCmd
 }

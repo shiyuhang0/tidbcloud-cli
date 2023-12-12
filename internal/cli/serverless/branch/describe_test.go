@@ -16,6 +16,7 @@ package branch
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -24,19 +25,47 @@ import (
 	"tidbcloud-cli/internal/iostream"
 	"tidbcloud-cli/internal/mock"
 	"tidbcloud-cli/internal/service/cloud"
-	branchApi "tidbcloud-cli/pkg/tidbcloud/branch/client/branch_service"
+	branchApi "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/client/branch_service"
+	branchModel "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/models"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
-type DeleteBranchSuite struct {
+const getBranchResultStr = `{
+  "annotations": {
+    "tidb.cloud/has-set-password": "false"
+  },
+  "branchId": "bran-fgwdnpasmrahnh5iozqawnmijq",
+  "clusterId": "10202848322613926203",
+  "createTime": "2023-12-11T09:41:44.000Z",
+  "createdBy": "yuhang.shi@pingcap.com",
+  "displayName": "t2",
+  "endpoints": {
+    "publicEndpoint": {
+      "host": "gateway01.us-east-1.dev.shared.aws.tidbcloud.com",
+      "port": 4000
+    }
+  },
+  "name": "clusters/10202848322613926203/branches/bran-fgwdnpasmrahnh5iozqawnmijq",
+  "parentId": "10202848322613926203",
+  "state": "ACTIVE",
+  "updateTime": "2023-12-11T09:44:05.000Z",
+  "usage": {
+    "requestUnit": "0",
+    "rowStorage": 951526
+  },
+  "userPrefix": "yxfrrVaa55wvBKE"
+}
+`
+
+type DescribeBranchSuite struct {
 	suite.Suite
 	h          *internal.Helper
 	mockClient *mock.TiDBCloudClient
 }
 
-func (suite *DeleteBranchSuite) SetupTest() {
+func (suite *DescribeBranchSuite) SetupTest() {
 	if err := os.Setenv("NO_COLOR", "true"); err != nil {
 		suite.T().Error(err)
 	}
@@ -52,14 +81,20 @@ func (suite *DeleteBranchSuite) SetupTest() {
 	}
 }
 
-func (suite *DeleteBranchSuite) TestDeleteBranchArgs() {
+func (suite *DescribeBranchSuite) TestDescribeBranchArgs() {
 	assert := require.New(suite.T())
 
-	clusterID := "12345"
-	branchID := "12345"
-	suite.mockClient.On("DeleteBranch", branchApi.NewDeleteBranchParams().
+	body := &branchModel.V1beta1Branch{}
+	err := json.Unmarshal([]byte(getBranchResultStr), body)
+	assert.Nil(err)
+	result := &branchApi.BranchServiceGetBranchOK{
+		Payload: body,
+	}
+	clusterID := "10202848322613926203"
+	branchID := "bran-fgwdnpasmrahnh5iozqawnmijq"
+	suite.mockClient.On("GetBranch", branchApi.NewBranchServiceGetBranchParams().
 		WithBranchID(branchID).WithClusterID(clusterID)).
-		Return(&branchApi.DeleteBranchOK{}, nil)
+		Return(result, nil)
 
 	tests := []struct {
 		name         string
@@ -69,34 +104,29 @@ func (suite *DeleteBranchSuite) TestDeleteBranchArgs() {
 		stderrString string
 	}{
 		{
-			name:         "delete branch success",
-			args:         []string{"--cluster-id", clusterID, "--branch-id", branchID, "--force"},
-			stdoutString: fmt.Sprintf("branch %s deleted\n", branchID),
+			name:         "describe branch success",
+			args:         []string{"--cluster-id", clusterID, "--branch-id", branchID},
+			stdoutString: getBranchResultStr,
 		},
 		{
-			name: "delete branch without force",
-			args: []string{"--cluster-id", clusterID, "--branch-id", branchID},
-			err:  fmt.Errorf("the terminal doesn't support prompt, please run with --force to delete the branch"),
+			name:         "describe branch with shorthand flag",
+			args:         []string{"-c", clusterID, "-b", branchID},
+			stdoutString: getBranchResultStr,
 		},
 		{
-			name:         "delete branch with simple flag",
-			args:         []string{"-c", clusterID, "-b", branchID, "--force"},
-			stdoutString: fmt.Sprintf("branch %s deleted\n", branchID),
-		},
-		{
-			name: "delete branch without required branch id",
-			args: []string{"-c", clusterID, "--force"},
-			err:  fmt.Errorf("if any flags in the group [branch-id cluster-id] are set they must all be set; missing [branch-id]"),
+			name: "describe branch without required cluster id",
+			args: []string{"-b", branchID},
+			err:  fmt.Errorf("required flag(s) \"cluster-id\" not set"),
 		},
 	}
 
 	for _, tt := range tests {
 		suite.T().Run(tt.name, func(t *testing.T) {
-			cmd := DeleteCmd(suite.h)
+			cmd := DescribeCmd(suite.h)
 			suite.h.IOStreams.Out.(*bytes.Buffer).Reset()
 			suite.h.IOStreams.Err.(*bytes.Buffer).Reset()
 			cmd.SetArgs(tt.args)
-			err := cmd.Execute()
+			err = cmd.Execute()
 			assert.Equal(tt.err, err)
 
 			assert.Equal(tt.stdoutString, suite.h.IOStreams.Out.(*bytes.Buffer).String())
@@ -108,6 +138,6 @@ func (suite *DeleteBranchSuite) TestDeleteBranchArgs() {
 	}
 }
 
-func TestDeleteBranchSuite(t *testing.T) {
-	suite.Run(t, new(DeleteBranchSuite))
+func TestDescribeBranchSuite(t *testing.T) {
+	suite.Run(t, new(DescribeBranchSuite))
 }

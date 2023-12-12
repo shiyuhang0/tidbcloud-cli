@@ -25,46 +25,20 @@ import (
 	"tidbcloud-cli/internal/iostream"
 	"tidbcloud-cli/internal/mock"
 	"tidbcloud-cli/internal/service/cloud"
-	branchApi "tidbcloud-cli/pkg/tidbcloud/branch/client/branch_service"
-	branchModel "tidbcloud-cli/pkg/tidbcloud/branch/models"
+	branchApi "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/client/branch_service"
+	branchModel "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/models"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
-const getBranchResultStr = `{
-  "annotations": {},
-  "cluster_id": "3478958",
-  "create_time": "2023-06-05T05:05:33.000Z",
-  "delete_time": null,
-  "display_name": "ru-test",
-  "endpoints": {
-    "public_endpoint": {
-      "host": "gateway01.us-east-1.dev.shared.aws.tidbcloud.com",
-      "port": 4000
-    }
-  },
-  "id": "branch-sm4ee5usauqfgsftywrapd",
-  "name": "clusters/3478958/branches/branch-sm4ee5usauqfgsftywrapd",
-  "parent_id": "3478958",
-  "state": "READY",
-  "update_time": "2023-06-05T05:06:41.000Z",
-  "usages": {
-    "column_storage": "0",
-    "request_unit": "1300000",
-    "row_storage": "261260139"
-  },
-  "user_prefix": "49dDUPpoxGXdsY9"
-}
-`
-
-type DescribeBranchSuite struct {
+type CreateBranchSuite struct {
 	suite.Suite
 	h          *internal.Helper
 	mockClient *mock.TiDBCloudClient
 }
 
-func (suite *DescribeBranchSuite) SetupTest() {
+func (suite *CreateBranchSuite) SetupTest() {
 	if err := os.Setenv("NO_COLOR", "true"); err != nil {
 		suite.T().Error(err)
 	}
@@ -80,19 +54,32 @@ func (suite *DescribeBranchSuite) SetupTest() {
 	}
 }
 
-func (suite *DescribeBranchSuite) TestDescribeBranchArgs() {
+func (suite *CreateBranchSuite) TestCreateBranchArgs() {
 	assert := require.New(suite.T())
 
-	body := &branchModel.OpenapiBranch{}
+	clusterID := "12345"
+	branchName := "test"
+	branchId := "12345"
+
+	createBranchBody := &branchModel.V1beta1Branch{
+		DisplayName: &branchName,
+	}
+	suite.mockClient.On("CreateBranch", branchApi.NewBranchServiceCreateBranchParams().
+		WithClusterID(clusterID).WithBranch(createBranchBody)).
+		Return(&branchApi.BranchServiceCreateBranchOK{
+			Payload: &branchModel.V1beta1Branch{
+				BranchID: branchId,
+			},
+		}, nil)
+
+	body := &branchModel.V1beta1Branch{}
 	err := json.Unmarshal([]byte(getBranchResultStr), body)
 	assert.Nil(err)
-	result := &branchApi.GetBranchOK{
+	result := &branchApi.BranchServiceGetBranchOK{
 		Payload: body,
 	}
-	clusterID := "12345"
-	branchID := "12345"
-	suite.mockClient.On("GetBranch", branchApi.NewGetBranchParams().
-		WithBranchID(branchID).WithClusterID(clusterID)).
+	suite.mockClient.On("GetBranch", branchApi.NewBranchServiceGetBranchParams().
+		WithClusterID(clusterID).WithBranchID(branchId)).
 		Return(result, nil)
 
 	tests := []struct {
@@ -103,29 +90,29 @@ func (suite *DescribeBranchSuite) TestDescribeBranchArgs() {
 		stderrString string
 	}{
 		{
-			name:         "describe branch success",
-			args:         []string{"--cluster-id", clusterID, "--branch-id", branchID},
-			stdoutString: getBranchResultStr,
+			name:         "create branch success",
+			args:         []string{"--cluster-id", clusterID, "--branch-name", branchName},
+			stdoutString: fmt.Sprintf("... Waiting for branch to be ready\nBranch %s is ready.", branchId),
 		},
 		{
-			name:         "describe branch with shorthand flag",
-			args:         []string{"-c", clusterID, "-b", branchID},
-			stdoutString: getBranchResultStr,
+			name:         "create branch with shorthand flag",
+			args:         []string{"-c", clusterID, "--branch-name", branchName},
+			stdoutString: fmt.Sprintf("... Waiting for branch to be ready\nBranch %s is ready.", branchId),
 		},
 		{
-			name: "describe branch without required cluster id",
-			args: []string{"-b", branchID},
-			err:  fmt.Errorf("if any flags in the group [branch-id cluster-id] are set they must all be set; missing [cluster-id]"),
+			name: "without required project id",
+			args: []string{"--branch-name", branchName},
+			err:  fmt.Errorf("required flag(s) \"cluster-id\" not set"),
 		},
 	}
 
 	for _, tt := range tests {
 		suite.T().Run(tt.name, func(t *testing.T) {
-			cmd := DescribeCmd(suite.h)
+			cmd := CreateCmd(suite.h)
 			suite.h.IOStreams.Out.(*bytes.Buffer).Reset()
 			suite.h.IOStreams.Err.(*bytes.Buffer).Reset()
 			cmd.SetArgs(tt.args)
-			err = cmd.Execute()
+			err := cmd.Execute()
 			assert.Equal(tt.err, err)
 
 			assert.Equal(tt.stdoutString, suite.h.IOStreams.Out.(*bytes.Buffer).String())
@@ -137,6 +124,6 @@ func (suite *DescribeBranchSuite) TestDescribeBranchArgs() {
 	}
 }
 
-func TestDescribeBranchSuite(t *testing.T) {
-	suite.Run(t, new(DescribeBranchSuite))
+func TestCreateBranchSuite(t *testing.T) {
+	suite.Run(t, new(CreateBranchSuite))
 }

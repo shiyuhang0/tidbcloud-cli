@@ -20,14 +20,14 @@ import (
 	"strconv"
 	"tidbcloud-cli/internal/ui"
 	"tidbcloud-cli/internal/util"
-	branchApi "tidbcloud-cli/pkg/tidbcloud/branch/client/branch_service"
-	branchModel "tidbcloud-cli/pkg/tidbcloud/branch/models"
 	connectInfoApi "tidbcloud-cli/pkg/tidbcloud/connect_info/client/connect_info_service"
 	connectInfoModel "tidbcloud-cli/pkg/tidbcloud/connect_info/models"
 	importApi "tidbcloud-cli/pkg/tidbcloud/import/client/import_service"
 	importModel "tidbcloud-cli/pkg/tidbcloud/import/models"
 	serverlessApi "tidbcloud-cli/pkg/tidbcloud/serverless/client/serverless_service"
 	serverlessModel "tidbcloud-cli/pkg/tidbcloud/serverless/models"
+	branchApi "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/client/branch_service"
+	branchModel "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/models"
 
 	projectApi "github.com/c4pt0r/go-tidbcloud-sdk-v1/client/project"
 	tea "github.com/charmbracelet/bubbletea"
@@ -222,7 +222,7 @@ func GetSelectedBranch(clusterID string, pageSize int64, client TiDBCloudClient)
 	var items = make([]interface{}, 0, len(branchItems))
 	for _, item := range branchItems {
 		items = append(items, &Branch{
-			ID:          *item.ID,
+			ID:          item.BranchID,
 			DisplayName: *item.DisplayName,
 			IsCluster:   false,
 		})
@@ -266,7 +266,7 @@ func GetSelectedBranchIfExist(clusterID string, pageSize int64, client TiDBCloud
 	})
 	for _, item := range branchItems {
 		items = append(items, &Branch{
-			ID:          *item.ID,
+			ID:          item.BranchID,
 			DisplayName: *item.DisplayName,
 			IsCluster:   false,
 		})
@@ -381,23 +381,30 @@ func RetrieveClusters(pID string, pageSize int64, d TiDBCloudClient) (int64, []*
 	return int64(len(items)), items, nil
 }
 
-func RetrieveBranches(cID string, pageSize int64, d TiDBCloudClient) (int64, []*branchModel.OpenapiBasicBranch, error) {
-	params := branchApi.NewListBranchesParams().WithClusterID(cID)
-	var total int64 = math.MaxInt64
-	var page int64 = 1
-	var items []*branchModel.OpenapiBasicBranch
+func RetrieveBranches(cID string, pageSize int64, d TiDBCloudClient) (int64, []*branchModel.V1beta1Branch, error) {
+	var items []*branchModel.V1beta1Branch
+	pageSizeInt32 := int32(pageSize)
+	var pageToken string
+
+	params := branchApi.NewBranchServiceListBranchesParams().WithClusterID(cID)
+	branches, err := d.ListBranches(params.WithPageSize(&pageSizeInt32))
+	if err != nil {
+		return 0, nil, errors.Trace(err)
+	}
+	items = append(items, branches.Payload.Branches...)
 	// loop to get all branches
-	for (page-1)*pageSize < total {
-		branches, err := d.ListBranches(params.WithPageToken(&page).WithPageSize(&pageSize))
+	for {
+		pageToken = branches.Payload.NextPageToken
+		if pageToken == "" {
+			break
+		}
+		branches, err = d.ListBranches(params.WithPageSize(&pageSizeInt32).WithPageToken(&pageToken))
 		if err != nil {
 			return 0, nil, errors.Trace(err)
 		}
-
-		total = *branches.Payload.Total
-		page += 1
 		items = append(items, branches.Payload.Branches...)
 	}
-	return total, items, nil
+	return int64(len(items)), items, nil
 }
 
 func RetrieveImports(pID string, cID string, pageSize int64, d TiDBCloudClient) (uint64, []*importModel.OpenapiGetImportResp, error) {

@@ -29,7 +29,7 @@ import (
 	"tidbcloud-cli/internal/flag"
 	"tidbcloud-cli/internal/service/cloud"
 	"tidbcloud-cli/internal/util"
-	branchApi "tidbcloud-cli/pkg/tidbcloud/branch/client/branch_service"
+	branchApi "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/client/branch_service"
 
 	serverlessApi "tidbcloud-cli/pkg/tidbcloud/serverless/client/serverless_service"
 
@@ -219,7 +219,7 @@ the connection forces the [ANSI SQL mode](https://dev.mysql.com/doc/refman/8.0/e
 				}
 			} else {
 				// branch
-				params := branchApi.NewGetBranchParams().WithClusterID(clusterID).WithBranchID(branchID)
+				params := branchApi.NewBranchServiceGetBranchParams().WithClusterID(clusterID).WithBranchID(branchID)
 				branchInfo, err := d.GetBranch(params)
 				if err != nil {
 					return errors.Trace(err)
@@ -228,7 +228,7 @@ the connection forces the [ANSI SQL mode](https://dev.mysql.com/doc/refman/8.0/e
 				port = strconv.Itoa(int(branchInfo.Payload.Endpoints.PublicEndpoint.Port))
 				name = *branchInfo.Payload.DisplayName
 				if userName == "" {
-					userName = fmt.Sprintf("%s.root", *branchInfo.Payload.UserPrefix)
+					userName = fmt.Sprintf("%s.root", branchInfo.Payload.UserPrefix)
 					fmt.Fprintln(h.IOStreams.Out, color.GreenString("Current user: ")+color.HiGreenString(userName))
 				}
 				clusterType = SERVERLESS

@@ -22,7 +22,7 @@ import (
 	"tidbcloud-cli/internal/config"
 	"tidbcloud-cli/internal/flag"
 	"tidbcloud-cli/internal/service/cloud"
-	branchApi "tidbcloud-cli/pkg/tidbcloud/branch/client/branch_service"
+	branchApi "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/client/branch_service"
 
 	"github.com/juju/errors"
 	"github.com/spf13/cobra"
@@ -39,6 +39,27 @@ func (c DescribeOpts) NonInteractiveFlags() []string {
 	}
 }
 
+func (c *DescribeOpts) MarkInteractive(cmd *cobra.Command) error {
+	flags := c.NonInteractiveFlags()
+	for _, fn := range flags {
+		f := cmd.Flags().Lookup(fn)
+		if f != nil && f.Changed {
+			c.interactive = false
+			break
+		}
+	}
+	// Mark required flags
+	if !c.interactive {
+		for _, fn := range flags {
+			err := cmd.MarkFlagRequired(fn)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func DescribeCmd(h *internal.Helper) *cobra.Command {
 	opts := DescribeOpts{
 		interactive: true,
@@ -50,20 +71,17 @@ func DescribeCmd(h *internal.Helper) *cobra.Command {
 		Aliases: []string{"get"},
 		Args:    cobra.NoArgs,
 		Example: fmt.Sprintf(`  Get the branch info in interactive mode:
-  $ %[1]s branch describe
+  $ %[1]s serverless branch describe
 
   Get the branch info in non-interactive mode:
-  $ %[1]s branch describe -c <cluster-id> -b <branch-id>`, config.CliName),
+  $ %[1]s serverless branch describe -c <cluster-id> -b <branch-id>
+
+  Get the branch info with Basic view in non-interactive mode:
+  $ %[1]s serverless branch describe -c <cluster-id> -b <branch-id> -v BASIC`, config.CliName),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			flags := opts.NonInteractiveFlags()
-			for _, fn := range flags {
-				f := cmd.Flags().Lookup(fn)
-				if f != nil && f.Changed {
-					opts.interactive = false
-				}
-			}
-			if len(args) > 0 {
-				opts.interactive = false
+			err := opts.MarkInteractive(cmd)
+			if err != nil {
+				return errors.Trace(err)
 			}
 			return nil
 		},
@@ -110,8 +128,22 @@ func DescribeCmd(h *internal.Helper) *cobra.Command {
 				branchID = bID
 				clusterID = cID
 			}
-			params := branchApi.NewGetBranchParams().
+
+			view, err := cmd.Flags().GetString(flag.View)
+			if err != nil {
+				return errors.Trace(err)
+			}
+
+			params := branchApi.NewBranchServiceGetBranchParams().
 				WithClusterID(clusterID).WithBranchID(branchID)
+			if err != nil {
+				return errors.Trace(err)
+			}
+			if view == flag.BasicView {
+				params.WithView(&view)
+			} else if view != flag.FullView {
+				return errors.Errorf("invalid view: %s", view)
+			}
 			branch, err := d.GetBranch(params)
 			if err != nil {
 				return errors.Trace(err)
@@ -129,6 +161,7 @@ func DescribeCmd(h *internal.Helper) *cobra.Command {
 
 	describeCmd.Flags().StringP(flag.BranchID, flag.BranchIDShort, "", "The ID of the branch to be deleted")
 	describeCmd.Flags().StringP(flag.ClusterID, flag.ClusterIDShort, "", "The cluster ID of the branch to be deleted")
+	describeCmd.Flags().StringP(flag.View, flag.ViewShort, flag.FullView, "The view of cluster, One of [\"BASIC\" \"FULL\"]")
 	describeCmd.MarkFlagsRequiredTogether(flag.BranchID, flag.ClusterID)
 	return describeCmd
 }

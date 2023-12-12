@@ -16,7 +16,6 @@ package branch
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -25,20 +24,19 @@ import (
 	"tidbcloud-cli/internal/iostream"
 	"tidbcloud-cli/internal/mock"
 	"tidbcloud-cli/internal/service/cloud"
-	branchApi "tidbcloud-cli/pkg/tidbcloud/branch/client/branch_service"
-	branchModel "tidbcloud-cli/pkg/tidbcloud/branch/models"
+	branchApi "tidbcloud-cli/pkg/tidbcloud/v1beta1/branch/client/branch_service"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
-type CreateBranchSuite struct {
+type DeleteBranchSuite struct {
 	suite.Suite
 	h          *internal.Helper
 	mockClient *mock.TiDBCloudClient
 }
 
-func (suite *CreateBranchSuite) SetupTest() {
+func (suite *DeleteBranchSuite) SetupTest() {
 	if err := os.Setenv("NO_COLOR", "true"); err != nil {
 		suite.T().Error(err)
 	}
@@ -54,33 +52,14 @@ func (suite *CreateBranchSuite) SetupTest() {
 	}
 }
 
-func (suite *CreateBranchSuite) TestCreateBranchArgs() {
+func (suite *DeleteBranchSuite) TestDeleteBranchArgs() {
 	assert := require.New(suite.T())
 
 	clusterID := "12345"
-	branchName := "test"
-	branchId := "12345"
-
-	createBranchBody := branchApi.CreateBranchBody{
-		DisplayName: &branchName,
-	}
-	suite.mockClient.On("CreateBranch", branchApi.NewCreateBranchParams().
-		WithClusterID(clusterID).WithBody(createBranchBody)).
-		Return(&branchApi.CreateBranchOK{
-			Payload: &branchModel.OpenapiCreateBranchResp{
-				ID: &branchId,
-			},
-		}, nil)
-
-	body := &branchModel.OpenapiBranch{}
-	err := json.Unmarshal([]byte(getBranchResultStr), body)
-	assert.Nil(err)
-	result := &branchApi.GetBranchOK{
-		Payload: body,
-	}
-	suite.mockClient.On("GetBranch", branchApi.NewGetBranchParams().
-		WithClusterID(clusterID).WithBranchID(branchId)).
-		Return(result, nil)
+	branchID := "12345"
+	suite.mockClient.On("DeleteBranch", branchApi.NewBranchServiceDeleteBranchParams().
+		WithBranchID(branchID).WithClusterID(clusterID)).
+		Return(&branchApi.BranchServiceDeleteBranchOK{}, nil)
 
 	tests := []struct {
 		name         string
@@ -90,25 +69,30 @@ func (suite *CreateBranchSuite) TestCreateBranchArgs() {
 		stderrString string
 	}{
 		{
-			name:         "create branch success",
-			args:         []string{"--cluster-id", clusterID, "--branch-name", branchName},
-			stdoutString: fmt.Sprintf("... Waiting for branch to be ready\nBranch %s is ready.", branchId),
+			name:         "delete branch success",
+			args:         []string{"--cluster-id", clusterID, "--branch-id", branchID, "--force"},
+			stdoutString: fmt.Sprintf("branch %s deleted\n", branchID),
 		},
 		{
-			name:         "create branch with shorthand flag",
-			args:         []string{"-c", clusterID, "--branch-name", branchName},
-			stdoutString: fmt.Sprintf("... Waiting for branch to be ready\nBranch %s is ready.", branchId),
+			name: "delete branch without force",
+			args: []string{"--cluster-id", clusterID, "--branch-id", branchID},
+			err:  fmt.Errorf("the terminal doesn't support prompt, please run with --force to delete the branch"),
 		},
 		{
-			name: "without required project id",
-			args: []string{"--branch-name", branchName},
-			err:  fmt.Errorf("required flag(s) \"cluster-id\" not set"),
+			name:         "delete branch with simple flag",
+			args:         []string{"-c", clusterID, "-b", branchID, "--force"},
+			stdoutString: fmt.Sprintf("branch %s deleted\n", branchID),
+		},
+		{
+			name: "delete branch without required branch id",
+			args: []string{"-c", clusterID, "--force"},
+			err:  fmt.Errorf("required flag(s) \"branch-id\" not set"),
 		},
 	}
 
 	for _, tt := range tests {
 		suite.T().Run(tt.name, func(t *testing.T) {
-			cmd := CreateCmd(suite.h)
+			cmd := DeleteCmd(suite.h)
 			suite.h.IOStreams.Out.(*bytes.Buffer).Reset()
 			suite.h.IOStreams.Err.(*bytes.Buffer).Reset()
 			cmd.SetArgs(tt.args)
@@ -124,6 +108,6 @@ func (suite *CreateBranchSuite) TestCreateBranchArgs() {
 	}
 }
 
-func TestCreateBranchSuite(t *testing.T) {
-	suite.Run(t, new(CreateBranchSuite))
+func TestDeleteBranchSuite(t *testing.T) {
+	suite.Run(t, new(DeleteBranchSuite))
 }
